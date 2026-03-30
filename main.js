@@ -176,9 +176,64 @@ document.addEventListener('DOMContentLoaded', () => {
             // 로컬 스토리지에 분석이 완료된 일기 및 답변 저장
             localStorage.setItem('emotionDiary_text', text);
             localStorage.setItem('emotionDiary_aiResponse', resultText);
+            
+            // 새 히스토리가 추가되었을 수 있으므로 목록 갱신
+            fetchAndRenderHistory();
         } catch (error) {
             console.error('API 호출 에러:', error);
             aiResponse.innerHTML = `<span style="color: #ef4444;"><b>분석 중 오류가 발생했습니다.</b><br><br><pre style="white-space: pre-wrap; font-size: 14px;">${error.message}</pre></span>`;
         }
     });
+
+    // 나의 일기 히스토리 불러오기
+    async function fetchAndRenderHistory() {
+        const historyContainer = document.getElementById('history-container');
+        if (!historyContainer) return;
+
+        historyContainer.innerHTML = '<div style="color: var(--text-secondary); padding: 20px 0;">히스토리를 불러오는 중입니다...</div>';
+
+        try {
+            const res = await fetch('/api/history');
+            if (!res.ok) throw new Error('히스토리 로드 실패');
+            
+            const data = await res.json();
+            const histories = data.data || [];
+
+            if (histories.length === 0) {
+                historyContainer.innerHTML = '<div style="color: var(--text-secondary); padding: 20px 0;">아직 저장된 일기 히스토리가 없습니다. 첫 번째 일기를 기록해보세요!</div>';
+                return;
+            }
+
+            historyContainer.innerHTML = '';
+            
+            histories.forEach(item => {
+                const dateObj = new Date(item.timestamp);
+                const dateStr = dateObj.toLocaleString('ko-KR', {
+                    year: 'numeric', month: 'long', day: 'numeric', 
+                    hour: '2-digit', minute: '2-digit'
+                });
+
+                const card = document.createElement('div');
+                card.className = 'history-card';
+                card.innerHTML = `
+                    <div class="history-date">${dateStr}</div>
+                    <div class="history-original">${escapeHtml(item.originalText)}</div>
+                    <div class="history-ai">${escapeHtml(item.aiResponse)}</div>
+                `;
+                historyContainer.appendChild(card);
+            });
+        } catch (e) {
+            console.error(e);
+            historyContainer.innerHTML = '<div style="color: #ef4444; padding: 20px 0;">히스토리를 불러오는 중 오류가 발생했습니다.</div>';
+        }
+    }
+
+    // HTML 태그가 그대로 노출되어 XSS 공격되는 걸 방지하기 위한 유틸
+    function escapeHtml(unsafe) {
+        return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                             .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    // 초기 로딩 시 히스토리 호출
+    fetchAndRenderHistory();
 });
