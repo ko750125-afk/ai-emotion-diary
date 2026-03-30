@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 감정 일기</title>
+    <!-- 구글 폰트 Pretendard 사용 -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>오늘의 하루는 어땠나요?</h1>
+            <p class="subtitle">당신의 생각과 감정을 자유롭게 적어주세요.</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <!-- ② 사용자가 여러 줄의 텍스트를 입력할 수 있는 넓은 입력창(textarea) -->
+                <textarea id="diary-input" placeholder="오늘 있었던 일이나 느꼈던 감정을 여기에 작성해주세요..."></textarea>
+                
+                <!-- ③ 입력창 아래에 '음성으로 입력하기' 버튼과 '분석 요청하기' 버튼 -->
+                <div class="button-group">
+                    <button class="btn btn-secondary" id="voice-btn">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                        </svg>
+                        <span id="voice-text">음성으로 입력하기</span>
+                    </button>
+                    <button class="btn btn-primary" id="analyze-btn">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        분석 요청하기
+                    </button>
+                </div>
+            </div>
+
+            <div class="response-section">
+                <!-- ④ 가장 아래에는 'AI의 답변'이라는 소제목 -->
+                <h2>AI의 답변</h2>
+                <!-- AI의 답변이 표시될 회색 배경의 박스 -->
+                <div class="response-box" id="ai-response">
+                    여기에 AI의 답변이 표시됩니다.
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script type="module" src="/main.js"></script>
+</body>
+</html>
