@@ -1,21 +1,154 @@
-document.addEventListener('DOMContentLoaded', () => {
+import { createClient } from '@supabase/supabase-js';
+
+// HTML Escape 유틸
+function escapeHtml(unsafe) {
+    return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                         .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // DOM 요소 초기화
+    const loginSection = document.getElementById('login-section');
+    const appContent = document.getElementById('app-content');
+    
+    const emailInput = document.getElementById('email-input');
+    const passwordInput = document.getElementById('password-input');
+    const loginBtn = document.getElementById('login-btn');
+    const signupBtn = document.getElementById('signup-btn');
+    const googleLoginBtn = document.getElementById('google-login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const authError = document.getElementById('auth-error');
+    const loggedInUserText = document.getElementById('logged-in-user');
+
     const voiceBtn = document.getElementById('voice-btn');
     const analyzeBtn = document.getElementById('analyze-btn');
     const diaryInput = document.getElementById('diary-input');
     const aiResponse = document.getElementById('ai-response');
     const voiceText = document.getElementById('voice-text');
+    const historyContainer = document.getElementById('history-container');
 
-    // 로컬 스토리지에서 저장된 일기 및 AI 답변 불러오기
-    const savedDiary = localStorage.getItem('emotionDiary_text');
-    const savedAIResponse = localStorage.getItem('emotionDiary_aiResponse');
-    
-    if (savedDiary) {
-        diaryInput.value = savedDiary;
+    let supabase = null;
+    let currentUser = null;
+    let sessionToken = null;
+
+    // 1. Supabase 초기화 (백엔드에서 URL 및 Key 가져오기)
+    async function initSupabase() {
+        try {
+            const envRes = await fetch('/api/env');
+            if (!envRes.ok) {
+                const errorData = await envRes.json();
+                throw new Error(errorData.error || "Failed to fetch environment variables");
+            }
+            const envData = await envRes.json();
+            if (envData.supabaseUrl && envData.supabaseAnonKey) {
+                supabase = createClient(envData.supabaseUrl, envData.supabaseAnonKey);
+                
+                // 인증 상태 변경 감지 리스너 등록
+                supabase.auth.onAuthStateChange((event, session) => {
+                    handleAuthStateChange(session);
+                });
+
+                // 초기 세션 확인
+                const { data: { session } } = await supabase.auth.getSession();
+                handleAuthStateChange(session);
+                
+                authError.style.display = 'none';
+                console.log("Supabase 초기화 성공");
+            } else {
+                throw new Error("Missing Supabase configuration values.");
+            }
+        } catch (e) {
+            console.error("Supabase 초기화 실패:", e);
+            showAuthError("서버 설정을 불러올 수 없어 로그인이 불가합니다. 관리자에게 문의하거나 잠시 후 다시 시도해주세요.");
+        }
     }
-    if (savedAIResponse) {
-        aiResponse.innerText = savedAIResponse;
-        aiResponse.style.whiteSpace = 'pre-wrap';
-        aiResponse.style.color = 'var(--text-primary)';
+
+    function handleAuthStateChange(session) {
+        if (session) {
+            currentUser = session.user;
+            sessionToken = session.access_token;
+            loggedInUserText.textContent = currentUser.email;
+            
+            // UI 변경
+            loginSection.style.display = 'none';
+            appContent.style.display = 'block';
+
+            // 저장된 임시 일기 복구 및 히스토리 최신화
+            restoreTempDiary();
+            fetchAndRenderHistory();
+        } else {
+            currentUser = null;
+            sessionToken = null;
+            
+            // UI 변경
+            loginSection.style.display = 'flex';
+            appContent.style.display = 'none';
+        }
+    }
+
+    initSupabase();
+
+    // --- 인증 이벤트 핸들러 ---
+    function showAuthError(message) {
+        authError.textContent = message;
+        authError.style.display = 'block';
+    }
+
+    signupBtn.addEventListener('click', async () => {
+        if (!supabase) return showAuthError("서버 설정이 완료되지 않아 회원가입을 진행할 수 없습니다.");
+        authError.style.display = 'none';
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        if (!email || !password) return showAuthError("이메일과 비밀번호를 입력해주세요.");
+
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) {
+            showAuthError(error.message);
+        } else {
+            alert("가입 확인 이메일을 확인해주세요!");
+        }
+    });
+
+    loginBtn.addEventListener('click', async () => {
+        if (!supabase) return showAuthError("서버 설정이 완료되지 않아 로그인을 진행할 수 없습니다.");
+        authError.style.display = 'none';
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        if (!email || !password) return showAuthError("이메일과 비밀번호를 입력해주세요.");
+
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+            showAuthError(error.message === 'Invalid login credentials' ? '이메일 또는 비밀번호가 틀렸습니다.' : error.message);
+        }
+    });
+
+    googleLoginBtn.addEventListener('click', async () => {
+        if (!supabase) return showAuthError("서버 설정이 완료되지 않아 로그인을 진행할 수 없습니다.");
+        authError.style.display = 'none';
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin
+            }
+        });
+        if (error) showAuthError(error.message);
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+        if (!supabase) return;
+        await supabase.auth.signOut();
+    });
+
+    // --- 일기장 및 음성 인식 로직 ---
+    function restoreTempDiary() {
+        const savedDiary = localStorage.getItem('emotionDiary_text');
+        const savedAIResponse = localStorage.getItem('emotionDiary_aiResponse');
+        if (savedDiary) diaryInput.value = savedDiary;
+        if (savedAIResponse) {
+            aiResponse.innerText = savedAIResponse;
+            aiResponse.style.whiteSpace = 'pre-wrap';
+            aiResponse.style.color = 'var(--text-primary)';
+        }
     }
 
     // Web Speech API 설정
@@ -29,16 +162,13 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition = new SpeechRecognition();
         recognition.lang = 'ko-KR';
         recognition.interimResults = true;
-        // PC 크롬 환경의 고질적인 버그(continuous=true 시 마이크 즉시 꺼짐 현상) 방지
         recognition.continuous = false; 
 
         recognition.onstart = () => {
             isRecording = true;
             voiceText.innerText = '음성 인식 중...';
             voiceBtn.classList.add('recording');
-            
             initialText = diaryInput.value;
-            // 기존 텍스트가 있으면 공백 하나 추가해서 자연스럽게 이어지게 함
             if (initialText && !initialText.endsWith(' ') && !initialText.endsWith('\n')) {
                 initialText += ' ';
             }
@@ -48,33 +178,20 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition.onresult = (event) => {
             let interimTranscript = '';
             let newlyFinal = '';
-
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 let transcript = event.results[i][0].transcript;
-                if (event.results[i].isFinal) {
-                    newlyFinal += transcript + ' '; // 완전히 인식된 문장 뒤에 띄어쓰기
-                } else {
-                    interimTranscript += transcript; // 아직 인식 중인 문장
-                }
+                if (event.results[i].isFinal) newlyFinal += transcript + ' ';
+                else interimTranscript += transcript;
             }
-
             finalTranscript += newlyFinal;
             diaryInput.value = initialText + finalTranscript + interimTranscript;
         };
 
         recognition.onerror = (event) => {
-            console.error('음성 인식 에러 상세:', event.error);
+            console.error('음성 인식 에러:', event.error);
             isRecording = false;
             voiceText.innerText = '음성으로 입력하기';
             voiceBtn.classList.remove('recording');
-
-            if (event.error === 'not-allowed') {
-                alert('마이크 사용 권한이 차단되었습니다. 주소창 왼쪽의 자물쇠 아이콘을 눌러 마이크 권한을 허용해주세요.');
-            } else if (event.error === 'audio-capture') {
-                alert('마이크를 찾을 수 없거나 연결되어 있지 않습니다. 물리적인 마이크 연결 상태나 윈도우 마이크 설정을 확인하세요.');
-            } else if (event.error !== 'no-speech') {
-                console.warn('예기치 않은 음성 인식 오류:', event.error);
-            }
         };
 
         recognition.onend = () => {
@@ -84,61 +201,32 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // 음성 입력 버튼 클릭 이벤트
     voiceBtn.addEventListener('click', async () => {
-        if (!SpeechRecognition) {
-            alert('이 브라우저는 음성 인식을 지원하지 않습니다. 구글 크롬(Chrome)이나 엣지(Edge) 데스크톱 버전을 사용해주세요.');
-            return;
-        }
-
+        if (!SpeechRecognition) return alert('이 브라우저는 음성 인식을 지원하지 않습니다.');
         if (isRecording) {
             recognition.stop();
-            isRecording = false;
-            voiceText.innerText = '음성으로 입력하기';
-            voiceBtn.classList.remove('recording');
         } else {
             try {
-                // Web Speech API가 조용히 죽는 현상을 방지하기 위해 강제로 마이크 스트림을 먼저 열어 엔진을 깨웁니다.
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-                // 정상적으로 열렸다면 잠든 스트림은 닫아주고 바로 인식 API로 넘깁니다.
                 stream.getTracks().forEach(track => track.stop());
-
-                isRecording = true;
-                voiceText.innerText = '음성 인식 준비 중...';
-                voiceBtn.classList.add('recording');
-
-                recognition.start(); // 마이크 권한 요청 및 인식 시작
+                recognition.start(); 
             } catch (e) {
                 console.error("마이크 활성화 에러:", e);
-                isRecording = false;
-                voiceText.innerText = '음성으로 입력하기';
-                voiceBtn.classList.remove('recording');
-
-                if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
-                    alert('마이크 사용 권한이 차단되어 있습니다. 주소창 왼쪽 자물쇠를 눌러 마이크 권한을 재설정해주세요.');
-                } else if (e.name === 'NotFoundError') {
-                    alert('컴퓨터에 연결된 마이크를 찾을 수 없습니다! 마이크 선이 제대로 꽂혀있는지 확인해주세요.');
-                } else if (e.name === 'NotReadableError') {
-                    alert('마이크를 사용할 수 없습니다. 다른 프로그램(줌, 디스코드 등)에서 마이크를 독점하고 있는지 확인하세요.');
-                } else {
-                    alert('마이크를 물리적으로 켤 수 없습니다: ' + e.message);
-                }
+                alert('마이크 접근 권한을 허용해주세요.');
             }
         }
     });
 
-    // 분석 요청하기 버튼 클릭 이벤트
     analyzeBtn.addEventListener('click', async () => {
+        if (!sessionToken) return alert('세션이 만료되었습니다. 다시 로그인해주세요.');
+
         const text = diaryInput.value.trim();
-        
         if (!text) {
             alert('일기 내용을 먼저 작성해주세요.');
             diaryInput.focus();
             return;
         }
 
-        // 로딩 UI 표시
         aiResponse.style.color = 'var(--text-primary)';
         aiResponse.innerHTML = `
             <div style="display: flex; align-items: center; gap: 10px;">
@@ -146,54 +234,52 @@ document.addEventListener('DOMContentLoaded', () => {
                     <circle cx="25" cy="25" r="20" fill="none" stroke="var(--primary-color)" stroke-width="5" stroke-dasharray="31.4 31.4" stroke-dashoffset="0"></circle>
                 </svg> 
                 작성하신 일기를 바탕으로 감정을 분석하고 있습니다...
-            </div>
-        `;
+            </div>`;
 
         try {
-            // 이제 프론트엔드에서는 프롬프트 조합이나 API 키를 신경 쓰지 않고, 
-            // 오직 사용자가 작성한 '일기 텍스트'만 백엔드(/api/analyze)로 넘깁니다.
             const response = await fetch('/api/analyze', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionToken}` // 서버에 사용자 인증 증명 넘김
                 },
                 body: JSON.stringify({ text })
             });
 
             if (!response.ok) {
                 const errorData = await response.text();
-                throw new Error(`백엔드 서버 요청 실패 (Status: ${response.status})\n상세: ${errorData}`);
+                throw new Error(`${errorData}`);
             }
 
-            // 백엔드가 처리해서 넘겨준 최종 결과물(result)을 받습니다.
             const data = await response.json();
             const resultText = data.result;
             
-            // 안전하게 텍스트 대입 및 줄바꿈 처리
             aiResponse.innerText = resultText;
             aiResponse.style.whiteSpace = 'pre-wrap';
 
-            // 로컬 스토리지에 분석이 완료된 일기 및 답변 저장
             localStorage.setItem('emotionDiary_text', text);
             localStorage.setItem('emotionDiary_aiResponse', resultText);
             
-            // 새 히스토리가 추가되었을 수 있으므로 목록 갱신
             fetchAndRenderHistory();
         } catch (error) {
             console.error('API 호출 에러:', error);
-            aiResponse.innerHTML = `<span style="color: #ef4444;"><b>분석 중 오류가 발생했습니다.</b><br><br><pre style="white-space: pre-wrap; font-size: 14px;">${error.message}</pre></span>`;
+            aiResponse.innerHTML = `<span style="color: #ef4444;"><b>분석 중 오류가 발생했습니다.</b><br><br>${error.message}</span>`;
         }
     });
 
-    // 나의 일기 히스토리 불러오기
     async function fetchAndRenderHistory() {
-        const historyContainer = document.getElementById('history-container');
-        if (!historyContainer) return;
+        if (!historyContainer || !sessionToken) return;
 
         historyContainer.innerHTML = '<div style="color: var(--text-secondary); padding: 20px 0;">히스토리를 불러오는 중입니다...</div>';
 
         try {
-            const res = await fetch('/api/history');
+            const res = await fetch('/api/history', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${sessionToken}` // 서버로 본인의 히스토리만 요청
+                }
+            });
+
             if (!res.ok) throw new Error('히스토리 로드 실패');
             
             const data = await res.json();
@@ -217,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.className = 'history-card';
                 card.innerHTML = `
                     <div class="history-date">${dateStr}</div>
-                    <div class="history-original">${escapeHtml(item.originalText)}</div>
+                    <div class="history-content">${escapeHtml(item.originalText)}</div>
                     <div class="history-ai">${escapeHtml(item.aiResponse)}</div>
                 `;
                 historyContainer.appendChild(card);
@@ -227,13 +313,4 @@ document.addEventListener('DOMContentLoaded', () => {
             historyContainer.innerHTML = '<div style="color: #ef4444; padding: 20px 0;">히스토리를 불러오는 중 오류가 발생했습니다.</div>';
         }
     }
-
-    // HTML 태그가 그대로 노출되어 XSS 공격되는 걸 방지하기 위한 유틸
-    function escapeHtml(unsafe) {
-        return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                             .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-    }
-
-    // 초기 로딩 시 히스토리 호출
-    fetchAndRenderHistory();
 });
