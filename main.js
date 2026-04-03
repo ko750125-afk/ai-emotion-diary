@@ -51,11 +51,14 @@ const UI = {
     init() {
         const ids = [
             'login-section', 'app-content', 'email-input', 'password-input', 'auth-error',
-            'logged-in-user', 'user-avatar', 'avatar-input', 'avatar-change-btn', 'voice-btn', 'voice-text', 'analyze-btn', 'diary-input',
-            'ai-response', 'history-container', 'signup-btn', 'login-btn', 'google-login-btn', 'logout-btn',
-            'chat-box', 'chat-input', 'send-chat-btn', 'chat-image-input', 'chat-image-btn', 'status-dot', 'status-text'
+            'logged-in-user', 'user-avatar', 'avatar-input', 'avatar-change-btn',
+            'chat-box', 'chat-input', 'send-chat-btn', 'chat-image-input', 'chat-image-btn', 
+            'status-dot', 'status-text', 'voice-btn'
         ];
-        ids.forEach(id => this.elements[id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())] = document.getElementById(id));
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) this.elements[id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())] = el;
+        });
     },
 
     updateAuthView(session) {
@@ -70,45 +73,10 @@ const UI = {
 
     showError(message, target = 'authError') {
         const el = this.elements[target] || this.elements.authError;
-        el.textContent = message;
-        el.style.display = 'block';
-    },
-
-    setLoading(isLoading, message = '분석 중입니다...') {
-        if (!isLoading) return;
-        this.elements.aiResponse.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <svg width="20" height="20" viewBox="0 0 50 50" style="animation: spin 1s linear infinite;">
-                    <circle cx="25" cy="25" r="20" fill="none" stroke="var(--primary-color)" stroke-width="5" stroke-dasharray="31.4 31.4" stroke-dashoffset="0"></circle>
-                </svg> 
-                ${message}
-            </div>`;
-    },
-
-    renderAIResponse(text) {
-        this.elements.aiResponse.innerText = text;
-        this.elements.aiResponse.style.whiteSpace = 'pre-wrap';
-        this.elements.aiResponse.style.color = 'var(--text-primary)';
-    },
-
-    renderHistory(histories) {
-        if (!this.elements.historyContainer) return;
-        if (histories.length === 0) {
-            this.elements.historyContainer.innerHTML = '<div class="empty-history">아직 저장된 일기가 없습니다.</div>';
-            return;
+        if (el) {
+            el.textContent = message;
+            el.style.display = 'block';
         }
-        this.elements.historyContainer.innerHTML = histories.map(item => `
-            <div class="history-card">
-                <div class="history-date">${Utils.formatDate(item.timestamp)}</div>
-                <div class="history-content">${Utils.escapeHtml(item.originalText)}</div>
-                <div class="history-ai">${Utils.escapeHtml(item.aiResponse)}</div>
-            </div>
-        `).join('');
-    },
-
-    toggleRecording(isRecording) {
-        this.elements.voiceText.innerText = isRecording ? '음성 인식 중...' : '음성으로 입력하기';
-        this.elements.voiceBtn.classList.toggle('recording', isRecording);
     },
 
     renderChatMessage(data, isMe) {
@@ -117,9 +85,20 @@ const UI = {
         msgEl.className = `chat-msg ${isMe ? 'me' : 'others'}`;
         
         const time = new Date(created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-        
-        // 아바타 이미지 또는 기본 이미지 (fallback)
         const displayAvatar = avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user_email)}&background=random`;
+
+        const imageRegex = /!\[image\]\((.*?)\)/;
+        const imageMatch = content.match(imageRegex);
+        
+        let displayContent = Utils.escapeHtml(content);
+        if (imageMatch) {
+            const imageUrl = imageMatch[1];
+            displayContent = `<img src="${imageUrl}" alt="Shared Image" 
+                onclick="window.open('${imageUrl}', '_blank')" 
+                onerror="this.parentElement.innerHTML='<div style=\'font-size: 12px; color: #ef4444; padding: 10px; border: 1px dashed #ef4444; border-radius: 8px;\'>⚠️ 이미지를 불러올 수 없습니다.</div>';">`;
+        } else if (content.startsWith('http') && (content.includes('supabase') || content.match(/\.(jpeg|jpg|gif|png)$/))) {
+            displayContent = `<img src="${content}" alt="Shared Image" onclick="window.open('${content}', '_blank')">`;
+        }
 
         msgEl.innerHTML = `
             <div class="chat-msg-avatar">
@@ -128,9 +107,7 @@ const UI = {
             <div class="chat-msg-body">
                 <span class="chat-msg-user">${Utils.escapeHtml(user_email)}</span>
                 <div class="chat-msg-content">
-                    ${content.startsWith('http') && (content.includes('supabase') || content.match(/\.(jpeg|jpg|gif|png)$/)) 
-                        ? `<img src="${content}" alt="Shared Image" onclick="window.open('${content}', '_blank')">`
-                        : Utils.escapeHtml(content)}
+                    ${displayContent}
                 </div>
                 <span class="chat-msg-time">${time}</span>
             </div>
@@ -139,64 +116,47 @@ const UI = {
         this.elements.chatBox.appendChild(msgEl);
         this.elements.chatBox.scrollTop = this.elements.chatBox.scrollHeight;
         
-        // 빈 메시지 안내 가리기
         const emptyMsg = this.elements.chatBox.querySelector('.chat-empty-msg');
         if (emptyMsg) emptyMsg.style.display = 'none';
     },
 
     updateChatStatus(status, color) {
-        if (this.elements.statusDot) this.elements.statusDot.style.background = color;
+        if (this.elements.statusDot) {
+            this.elements.statusDot.style.background = color;
+            this.elements.statusDot.style.boxShadow = `0 0 10px ${color}`;
+        }
         if (this.elements.statusText) this.elements.statusText.innerText = status;
+    },
+
+    toggleRecording(isRecording) {
+        if (this.elements.voiceBtn) {
+            this.elements.voiceBtn.classList.toggle('recording', isRecording);
+            if (isRecording) {
+                this.elements.voiceBtn.style.color = 'var(--accent-vivid)';
+                this.elements.voiceBtn.style.filter = 'drop-shadow(0 0 8px var(--accent-vivid))';
+            } else {
+                this.elements.voiceBtn.style.color = '';
+                this.elements.voiceBtn.style.filter = '';
+            }
+        }
     }
 };
 
 // --- Services ---
-const AuthService = {
-    async init() {
-        try {
-            const { supabaseUrl, supabaseAnonKey } = await HttpClient.request('/api/env');
-            AppState.update({ supabase: createClient(supabaseUrl, supabaseAnonKey) });
-            
-            const supabase = AppState.get().supabase;
-            supabase.auth.onAuthStateChange((_, session) => this.handleSession(session));
-            
-            const { data: { session } } = await supabase.auth.getSession();
-            this.handleSession(session);
-        } catch (e) {
-            UI.showError("서버 설정을 불러올 수 없습니다.");
+const NotificationService = {
+    // 맑은 신호음 URL
+    soundUrl: 'https://assets.mixkit.co/active_storage/sfx/2859/2859-preview.mp3',
+    audio: null,
+
+    init() {
+        this.audio = new Audio(this.soundUrl);
+    },
+
+    playSound() {
+        if (this.audio) {
+            this.audio.currentTime = 0;
+            this.audio.play().catch(e => console.warn("알림음 재생 실패 (브라우저 정책):", e));
         }
-    },
-
-    handleSession(session) {
-        AppState.update({ user: session?.user || null, token: session?.access_token || null });
-        UI.updateAuthView(session);
-        if (session) {
-            DiaryService.restoreTemp();
-            ApiService.fetchHistory();
-            ProfileService.loadAvatar(); // 아바타 불러오기
-            ChatService.init(); // 채팅 초기화 및 구독 시작
-        }
-    },
-
-    async login(email, password) {
-        const { error } = await AppState.get().supabase.auth.signInWithPassword({ email, password });
-        if (error) UI.showError(error.message.includes('Invalid') ? '이메일 또는 비밀번호가 틀렸습니다.' : error.message);
-    },
-
-    async signup(email, password) {
-        const { error } = await AppState.get().supabase.auth.signUp({ email, password });
-        if (error) UI.showError(error.message);
-        else alert("가입 확인 이메일을 확인해주세요!");
-    },
-
-    async googleLogin() {
-        await AppState.get().supabase.auth.signInWithOAuth({
-            provider: 'google', options: { redirectTo: window.location.origin }
-        });
-    },
-
-    async logout() {
-        await AppState.get().supabase.auth.signOut();
     }
 };
 
@@ -222,9 +182,8 @@ const SpeechService = {
                 if (e.results[i].isFinal) final += e.results[i][0].transcript + ' ';
                 else interim += e.results[i][0].transcript;
             }
-            const current = UI.elements.diaryInput.value;
-            // Append logic could be refined but keeping original functionality
-            UI.elements.diaryInput.value = current.trim() + ' ' + (final + interim).trim();
+            const current = UI.elements.chatInput.value;
+            UI.elements.chatInput.value = current.trim() + ' ' + (final + interim).trim();
         };
 
         this.recognition.onend = () => {
@@ -254,43 +213,50 @@ const SpeechService = {
     }
 };
 
-const ApiService = {
-    async analyze(text) {
-        UI.setLoading(true);
+const AuthService = {
+    async init() {
         try {
-            const { result } = await HttpClient.request('/api/analyze', {
-                method: 'POST',
-                body: JSON.stringify({ text })
-            });
-            UI.renderAIResponse(result);
-            DiaryService.saveTemp(text, result);
-            this.fetchHistory();
+            const { supabaseUrl, supabaseAnonKey } = await HttpClient.request('/api/env');
+            AppState.update({ supabase: createClient(supabaseUrl, supabaseAnonKey) });
+            
+            const supabase = AppState.get().supabase;
+            supabase.auth.onAuthStateChange((_, session) => this.handleSession(session));
+            
+            const { data: { session } } = await supabase.auth.getSession();
+            this.handleSession(session);
         } catch (e) {
-            UI.renderAIResponse(`분석 오류: ${e.message}`);
+            UI.showError("서버 설정을 불러올 수 없습니다.");
         }
     },
 
-    async fetchHistory() {
-        if (!AppState.get().token) return;
-        try {
-            const { data } = await HttpClient.request('/api/history');
-            UI.renderHistory(data || []);
-        } catch (e) {
-            console.error("History fetch error:", e);
+    handleSession(session) {
+        AppState.update({ user: session?.user || null, token: session?.access_token || null });
+        UI.updateAuthView(session);
+        if (session) {
+            ProfileService.loadAvatar();
+            ChatService.init();
         }
-    }
-};
-
-const DiaryService = {
-    saveTemp: (text, ai) => {
-        localStorage.setItem('emotionDiary_text', text);
-        localStorage.setItem('emotionDiary_aiResponse', ai);
     },
-    restoreTemp: () => {
-        const text = localStorage.getItem('emotionDiary_text');
-        const ai = localStorage.getItem('emotionDiary_aiResponse');
-        if (text) UI.elements.diaryInput.value = text;
-        if (ai) UI.renderAIResponse(ai);
+
+    async login(email, password) {
+        const { error } = await AppState.get().supabase.auth.signInWithPassword({ email, password });
+        if (error) UI.showError(error.message.includes('Invalid') ? '이메일 또는 비밀번호가 틀렸습니다.' : error.message);
+    },
+
+    async signup(email, password) {
+        const { error } = await AppState.get().supabase.auth.signUp({ email, password });
+        if (error) UI.showError(error.message);
+        else alert("가입 확인 이메일을 확인해주세요!");
+    },
+
+    async googleLogin() {
+        await AppState.get().supabase.auth.signInWithOAuth({
+            provider: 'google', options: { redirectTo: window.location.origin }
+        });
+    },
+
+    async logout() {
+        await AppState.get().supabase.auth.signOut();
     }
 };
 
@@ -299,17 +265,14 @@ const ProfileService = {
         const { supabase, user } = AppState.get();
         if (!supabase || !user) return;
 
-        // 1. 유저 메타데이터 확인
         const avatarUrl = user.user_metadata?.avatar_url;
         if (avatarUrl) {
             UI.elements.userAvatar.src = avatarUrl;
             return;
         }
 
-        // 2. 스토리지에서 기본 파일 확인 (fallback)
         const { data } = supabase.storage.from('avatars').getPublicUrl(`${user.id}/avatar.png`);
         if (data?.publicUrl) {
-            // URL이 유효한지 가볍게 체크 (실제론 metadata 업데이트가 권장됨)
             const res = await fetch(data.publicUrl, { method: 'HEAD' });
             if (res.ok) UI.elements.userAvatar.src = data.publicUrl;
         }
@@ -320,7 +283,7 @@ const ProfileService = {
         if (!supabase || !user || !file) return;
 
         UI.updateChatStatus('사진 업로드 중...', '#fbbf24');
-        const fileName = `avatar.png`; // 고정 이름으로 덮어쓰기
+        const fileName = `avatar.png`;
         const filePath = `${user.id}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
@@ -334,9 +297,8 @@ const ProfileService = {
 
         const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
         
-        // 유저 메타데이터 업데이트 (나중에 로그인할 때 바로 불러오기 위함)
         const { error: updateError } = await supabase.auth.updateUser({
-            data: { avatar_url: `${publicUrl}?t=${Date.now()}` } // 캐시 방지
+            data: { avatar_url: `${publicUrl}?t=${Date.now()}` }
         });
 
         if (updateError) console.error("메타데이터 업데이트 실패:", updateError);
@@ -349,24 +311,18 @@ const ProfileService = {
 
 const ChatService = {
     channel: null,
-    pollingTimer: null,   // 폴링 타이머
-    lastMessageId: 0,     // 마지막으로 받은 메시지 ID (폴링 기준점)
+    pollingTimer: null,
+    lastMessageId: 0,
 
     async init() {
         const { supabase, user } = AppState.get();
         if (!supabase || !user) return;
 
-        // 1. 기존 메시지 가져오기 + lastMessageId 초기화
         await this.fetchInitialMessages(supabase, user);
-
-        // 2. Realtime 구독 시도 (성공 시 폴링 중단)
         this.subscribeRealtime(supabase, user);
-
-        // 3. 폴링 시작 (Realtime 실패 시 3초마다 새 메시지 체크)
         this.startPolling(supabase, user);
     },
 
-    // 초기 메시지 로드
     async fetchInitialMessages(supabase, user) {
         const { data, error } = await supabase
             .from('messages')
@@ -381,12 +337,10 @@ const ChatService = {
         if (data && data.length > 0) {
             this.clearChat();
             data.forEach(msg => UI.renderChatMessage(msg, msg.user_email === user.email));
-            // 마지막 메시지 ID를 기록 (폴링 기준점)
             this.lastMessageId = data[data.length - 1].id;
         }
     },
 
-    // Realtime WebSocket 구독 시도
     subscribeRealtime(supabase, user) {
         if (this.channel) {
             supabase.removeChannel(this.channel);
@@ -400,23 +354,21 @@ const ChatService = {
                 { event: 'INSERT', schema: 'public', table: 'messages' },
                 (payload) => {
                     const newMsg = payload.new;
-                    // 폴링과 중복 방지: 아직 표시 안 된 메시지만 렌더링
                     if (newMsg.id > this.lastMessageId) {
                         this.lastMessageId = newMsg.id;
-                        UI.renderChatMessage(newMsg, newMsg.user_email === user.email);
+                        const isMe = newMsg.user_email === user.email;
+                        UI.renderChatMessage(newMsg, isMe);
+                        
+                        if (!isMe) NotificationService.playSound();
                     }
                 }
             )
             .subscribe((status, err) => {
-                console.log("Realtime 구독 상태:", status);
                 if (status === 'SUBSCRIBED') {
-                    // Realtime 성공 → 폴링 중단
                     UI.updateChatStatus('실시간 연결됨 ●', '#4ade80');
                     this.stopPolling();
                 } else if (status === 'CHANNEL_ERROR') {
-                    // Realtime 실패 → 폴링으로 대체
                     UI.updateChatStatus('자동 업데이트 중 ●', '#a78bfa');
-                    console.warn('Realtime 연결 실패. 폴링 모드로 동작 중:', err);
                 }
             });
     },
@@ -429,21 +381,20 @@ const ChatService = {
         }
     },
 
-    // 3초마다 새 메시지 폴링 (Realtime 백업)
     startPolling(supabase, user) {
         this.stopPolling();
         this.pollingTimer = setInterval(async () => {
             const { data } = await supabase
                 .from('messages')
                 .select('*')
-                .gt('id', this.lastMessageId)  // 마지막 ID 이후 것만 가져오기
+                .gt('id', this.lastMessageId)
                 .order('created_at', { ascending: true });
 
             if (data && data.length > 0) {
                 data.forEach(msg => UI.renderChatMessage(msg, msg.user_email === user.email));
                 this.lastMessageId = data[data.length - 1].id;
             }
-        }, 3000); // 3초마다 체크
+        }, 3000);
     },
 
     stopPolling() {
@@ -491,7 +442,7 @@ const ChatService = {
         }
 
         const { data: { publicUrl } } = supabase.storage.from('chat-images').getPublicUrl(filePath);
-        await this.sendMessage(publicUrl);
+        await this.sendMessage(`![image](${publicUrl})`);
         UI.updateChatStatus('전송 완료', '#4ade80');
         setTimeout(() => this.updateStatusByRealtime(), 2000);
     },
@@ -506,19 +457,13 @@ document.addEventListener('DOMContentLoaded', () => {
     UI.init();
     AuthService.init();
     SpeechService.init();
+    NotificationService.init();
 
-    // Unified Event Listeners
     const listeners = [
         { id: 'signupBtn', event: 'click', fn: () => AuthService.signup(UI.elements.emailInput.value.trim(), UI.elements.passwordInput.value) },
         { id: 'loginBtn', event: 'click', fn: () => AuthService.login(UI.elements.emailInput.value.trim(), UI.elements.passwordInput.value) },
         { id: 'googleLoginBtn', event: 'click', fn: () => AuthService.googleLogin() },
         { id: 'logoutBtn', event: 'click', fn: () => AuthService.logout() },
-        { id: 'voiceBtn', event: 'click', fn: () => SpeechService.toggle() },
-        { id: 'analyzeBtn', event: 'click', fn: () => {
-            const text = UI.elements.diaryInput.value.trim();
-            if (!text) return alert('일기 내용을 입력해주세요.');
-            ApiService.analyze(text);
-        }},
         { id: 'sendChatBtn', event: 'click', fn: () => {
             const content = UI.elements.chatInput.value.trim();
             if (!content) return;
@@ -530,7 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }},
         { id: 'avatarChangeBtn', event: 'click', fn: () => UI.elements.avatarInput.click() },
-        { id: 'userAvatar', event: 'click', fn: () => UI.elements.avatarInput.click() }, // 이미지 클릭 시에도 동작
+        { id: 'userAvatar', event: 'click', fn: () => UI.elements.avatarInput.click() },
         { id: 'avatarInput', event: 'change', fn: (e) => {
             const file = e.target.files[0];
             if (file) ProfileService.uploadAvatar(file);
@@ -539,7 +484,8 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'chatImageInput', event: 'change', fn: (e) => {
             const file = e.target.files[0];
             if (file) ChatService.uploadAndSendImage(file);
-        }}
+        }},
+        { id: 'voiceBtn', event: 'click', fn: () => SpeechService.toggle() }
     ];
 
     listeners.forEach(({ id, event, fn }) => {

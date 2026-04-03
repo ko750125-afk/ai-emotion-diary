@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 감정 일기</title>
-    <!-- 구글 폰트 Pretendard 사용 -->
+    <title>realtime-chat</title>
+    <!-- 구글 폰트 Pretendard & Outfit 사용 -->
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="app-container">
         <header>
-            <h1>AI 감정 일기</h1>
-            <p class="subtitle">오늘의 생각과 감정을 자유롭게 적어주세요.</p>
+            <h1>@realtime-chat</h1>
+            <p class="subtitle">실시간으로 소통하는 우리만의 공간</p>
         </header>
 
         <main>
@@ -20,7 +21,7 @@
             <section id="login-section" class="login-container">
                 <div class="login-header">
                     <h2>환영합니다</h2>
-                    <p>당신의 하루를 기록하려면 먼저 로그인해주세요.</p>
+                    <p>로그인하고 실시간 대화에 참여하세요.</p>
                 </div>
                 <div class="login-form">
                     <input type="email" id="email-input" placeholder="이메일을 입력하세요" required />
@@ -37,90 +38,64 @@
                 </div>
                 
                 <button class="btn btn-outline google-btn" id="google-login-btn">
-                    <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="20" height="20" viewBox="0 0 48 48">
                         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.7 17.74 9.5 24 9.5z"/>
                         <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
                         <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
                         <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                        <path fill="none" d="M0 0h48v48H0z"/>
                     </svg>
                     Google로 로그인
                 </button>
             </section>
 
-            <!-- 기존 애플리케이션 화면 (초기엔 숨김 처리) -->
+            <!-- 채팅 앱 메인 화면 -->
             <div id="app-content" style="display: none;">
-                <div class="user-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <p style="margin: 0;">반갑습니다, <strong id="logged-in-user"></strong>님!</p>
-                    <button id="logout-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.9rem;">로그아웃</button>
+                <div class="user-info-bar">
+                    <p>반갑습니다, <strong id="logged-in-user"></strong>님!</p>
+                    <button id="logout-btn" class="btn btn-logout">로그아웃</button>
                 </div>
-                
-                <div class="input-section">
-                    <!-- ② 사용자가 여러 줄의 텍스트를 입력할 수 있는 넓은 입력창(textarea) -->
-                    <textarea id="diary-input" placeholder="오늘 있었던 일이나 지금 느끼는 감정을 편안하게 적어보세요..."></textarea>
-                
-                <!-- ③ 입력창 아래에 '음성으로 입력하기' 버튼과 '분석 요청하기' 버튼 -->
-                <div class="button-group">
-                    <button class="btn btn-secondary" id="voice-btn">
-                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
-                        </svg>
-                        <span id="voice-text">음성으로 입력하기</span>
-                    </button>
-                    <button class="btn btn-primary" id="analyze-btn">
-                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                        </svg>
-                        분석 요청하기
-                    </button>
-                </div>
-            </div>
 
-            <div class="response-section">
-                <!-- ④ 가장 아래에는 'AI의 답변'이라는 소제목 -->
-                <h2>AI의 답변</h2>
-                <!-- AI의 답변이 표시될 회색 배경의 박스 -->
-                <div class="response-box" id="ai-response">
-                    여기에 AI의 답변이 표시됩니다.
-                </div>
-            </div>
+                <div class="chat-section">
+                    <div class="chat-header">
+                        <div class="chat-title-group">
+                            <h2>실시간 채팅방</h2>
+                            <div id="chat-status" class="status-indicator">
+                                <span id="status-dot"></span>
+                                <span id="status-text">연결 대기 중...</span>
+                            </div>
+                        </div>
+                        
+                        <div class="profile-card">
+                            <div class="chat-profile-area">
+                                <input type="file" id="avatar-input" accept="image/*" style="display: none;">
+                                <div class="profile-avatar-wrapper">
+                                    <img id="user-avatar" src="https://ui-avatars.com/api/?name=User&background=random" alt="Avatar" class="profile-avatar-img">
+                                </div>
+                                <button id="avatar-change-btn" class="text-btn">사진 변경</button>
+                            </div>
+                        </div>
+                    </div>
 
-            <!-- 💬 실시간 채팅 섹션 (이미지 기획안 반영) -->
-            <div class="chat-section">
-                <div class="chat-header">
-                    <h2 style="margin: 0;">실시간 채팅</h2>
-                    <div id="chat-status" style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-                        <span id="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #64748b;"></span>
-                        <span id="status-text">연결 대기 중...</span>
+                    <div id="chat-box" class="chat-box">
+                        <div class="chat-empty-msg">대화를 시작해보세요. 👋</div>
+                    </div>
+
+                    <div class="chat-input-area">
+                        <div class="chat-input-group">
+                            <input type="file" id="chat-image-input" accept="image/*" style="display: none;">
+                            <button id="chat-image-btn" class="btn-icon" title="이미지 전송">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            </button>
+                            <button id="voice-btn" class="btn-icon" title="음성 인식">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                            </button>
+                            <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="200">
+                            <button id="send-chat-btn" class="btn-send">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
-
-                <div class="chat-profile-area">
-                    <input type="file" id="avatar-input" accept="image/*" style="display: none;">
-                    <div class="profile-avatar-wrapper">
-                        <img id="user-avatar" src="https://ui-avatars.com/api/?name=User&background=random" alt="Avatar" class="profile-avatar-img">
-                    </div>
-                    <button id="avatar-change-btn" class="text-btn">사진 변경</button>
-                </div>
-                <div id="chat-box" class="chat-box">
-                    <div class="chat-empty-msg">실시간으로 다른 사용자들과 대화해보세요.</div>
-                </div>
-                <div class="chat-input-group">
-                    <input type="file" id="chat-image-input" accept="image/*" style="display: none;">
-                    <button id="chat-image-btn" class="btn btn-outline" style="padding: 8px; flex: 0 0 40px;" title="이미지 전송">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                    </button>
-                    <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="200">
-                    <button id="send-chat-btn" class="btn btn-primary" style="flex: 0 0 80px; padding: 12px;">전송</button>
-                </div>
-            </div>
-
-            <div class="history-section">
-                <h2>나의 일기 히스토리</h2>
-                <div id="history-container" class="history-list">
-                    <!-- 히스토리 카드가 여기에 동적으로 주입됩니다. -->
-                </div>
-            </div>
             </div> <!-- End of app-content -->
         </main>
     </div>
