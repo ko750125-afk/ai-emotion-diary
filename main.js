@@ -112,20 +112,28 @@ const UI = {
     },
 
     renderChatMessage(data, isMe) {
-        const { user_email, content, created_at } = data;
+        const { user_email, content, created_at, avatar_url } = data;
         const msgEl = document.createElement('div');
         msgEl.className = `chat-msg ${isMe ? 'me' : 'others'}`;
         
         const time = new Date(created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
         
+        // 아바타 이미지 또는 기본 이미지 (fallback)
+        const displayAvatar = avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user_email)}&background=random`;
+
         msgEl.innerHTML = `
-            <span class="chat-msg-user">${Utils.escapeHtml(user_email)}</span>
-            <div class="chat-msg-content">
-                ${content.startsWith('http') && (content.includes('supabase') || content.match(/\.(jpeg|jpg|gif|png)$/)) 
-                    ? `<img src="${content}" alt="Shared Image" onclick="window.open('${content}', '_blank')">`
-                    : Utils.escapeHtml(content)}
+            <div class="chat-msg-avatar">
+                <img src="${displayAvatar}" alt="Profile">
             </div>
-            <span class="chat-msg-time">${time}</span>
+            <div class="chat-msg-body">
+                <span class="chat-msg-user">${Utils.escapeHtml(user_email)}</span>
+                <div class="chat-msg-content">
+                    ${content.startsWith('http') && (content.includes('supabase') || content.match(/\.(jpeg|jpg|gif|png)$/)) 
+                        ? `<img src="${content}" alt="Shared Image" onclick="window.open('${content}', '_blank')">`
+                        : Utils.escapeHtml(content)}
+                </div>
+                <span class="chat-msg-time">${time}</span>
+            </div>
         `;
         
         this.elements.chatBox.appendChild(msgEl);
@@ -452,7 +460,8 @@ const ChatService = {
         const { error } = await supabase.from('messages').insert([{
             content: content.trim(),
             user_email: user.email,
-            user_id: user.id
+            user_id: user.id,
+            avatar_url: user.user_metadata?.avatar_url || null
         }]);
 
         if (error) {
