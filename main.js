@@ -112,7 +112,7 @@ const UI = {
     },
 
     renderChatMessage(data, isMe) {
-        const { user_email, message, created_at } = data;
+        const { user_email, content, created_at } = data;
         const msgEl = document.createElement('div');
         msgEl.className = `chat-msg ${isMe ? 'me' : 'others'}`;
         
@@ -120,7 +120,7 @@ const UI = {
         
         msgEl.innerHTML = `
             <span class="chat-msg-user">${Utils.escapeHtml(user_email)}</span>
-            <div class="chat-msg-content">${Utils.escapeHtml(message)}</div>
+            <div class="chat-msg-content">${Utils.escapeHtml(content)}</div>
             <span class="chat-msg-time">${time}</span>
         `;
         
@@ -285,7 +285,7 @@ const ChatService = {
 
         // 1. 기존 메시지 가져오기 (최근 20개)
         const { data, error } = await supabase
-            .from('chat_messages')
+            .from('messages')
             .select('*')
             .order('created_at', { ascending: true })
             .limit(20);
@@ -295,31 +295,35 @@ const ChatService = {
             data.forEach(msg => UI.renderChatMessage(msg, msg.user_id === user.id));
         }
 
-        // 2. 실시간 구독 설정
+        // 2. 실시간 구독 설정 (3단계 지시 전이므로 기본 틀만 유지)
         if (this.channel) supabase.removeChannel(this.channel);
         
         this.channel = supabase
-            .channel('public:chat_messages')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, payload => {
+            .channel('public:messages')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
                 const newMsg = payload.new;
-                // 중복 방지를 위한 간단한 체크 (직접 보낸 메시지도 Realtime으로 올 수 있음)
-                // UI에서 중복 처리는 렌더링 함수에서 하거나 여기서 필터링 가능
                 UI.renderChatMessage(newMsg, newMsg.user_id === user.id);
             })
             .subscribe();
     },
 
-    async sendMessage(message) {
+    async sendMessage(content) {
         const { supabase, user } = AppState.get();
-        if (!supabase || !user || !message.trim()) return;
+        if (!supabase || !user || !content.trim()) return;
 
-        const { error } = await supabase.from('chat_messages').insert([{
-            user_id: user.id,
-            user_email: user.email,
-            message: message.trim()
+        // 지시하신 { content, user_email } 형식 적용
+        const { error } = await supabase.from('messages').insert([{
+            content: content.trim(),
+            user_email: user.email
         }]);
 
-        if (error) console.error("메시지 전송 실패:", error);
+        if (error) {
+            console.error("메시지 전송 실패:", error);
+            alert("메시지 전송에 실패했습니다.");
+        } else {
+            // 전송 성공 시 입력창 비우기 (지시 사항)
+            UI.elements.chatInput.value = '';
+        }
     },
 
     clearChat() {
@@ -346,10 +350,9 @@ document.addEventListener('DOMContentLoaded', () => {
             ApiService.analyze(text);
         }},
         { id: 'sendChatBtn', event: 'click', fn: () => {
-            const msg = UI.elements.chatInput.value.trim();
-            if (!msg) return;
-            ChatService.sendMessage(msg);
-            UI.elements.chatInput.value = '';
+            const content = UI.elements.chatInput.value.trim();
+            if (!content) return;
+            ChatService.sendMessage(content);
         }},
         { id: 'chatInput', event: 'keypress', fn: (e) => {
             if (e.key === 'Enter') {
