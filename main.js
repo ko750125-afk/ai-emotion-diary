@@ -283,72 +283,106 @@ const DiaryService = {
 
 const ChatService = {
     channel: null,
+    pollingTimer: null,   // 폴링 타이머
+    lastMessageId: 0,     // 마지막으로 받은 메시지 ID (폴링 기준점)
 
     async init() {
         const { supabase, user } = AppState.get();
         if (!supabase || !user) return;
 
-        // 1. 기존 메시지 가져오기 (최근 20개) - 3단계 지시사항 ③
-        console.log("ChatService: Fetching history...");
+        // 1. 기존 메시지 가져오기 + lastMessageId 초기화
+        await this.fetchInitialMessages(supabase, user);
+
+        // 2. Realtime 구독 시도 (성공 시 폴링 중단)
+        this.subscribeRealtime(supabase, user);
+
+        // 3. 폴링 시작 (Realtime 실패 시 3초마다 새 메시지 체크)
+        this.startPolling(supabase, user);
+    },
+
+    // 초기 메시지 로드
+    async fetchInitialMessages(supabase, user) {
         const { data, error } = await supabase
             .from('messages')
             .select('*')
             .order('created_at', { ascending: true })
-            .limit(20);
+            .limit(50);
 
         if (error) {
-            console.error("ChatService: Fetch error:", error);
-        } else if (data) {
-            console.log(`ChatService: Successfully fetched ${data.length} messages.`);
-            this.clearChat();
-            // isMe 판별을 user_email 기반으로 수정 (user_id가 null일 수 있기 때문)
-            data.forEach(msg => UI.renderChatMessage(msg, msg.user_email === user.email));
+            console.error("메시지 가져오기 오류:", error);
+            return;
         }
+        if (data && data.length > 0) {
+            this.clearChat();
+            data.forEach(msg => UI.renderChatMessage(msg, msg.user_email === user.email));
+            // 마지막 메시지 ID를 기록 (폴링 기준점)
+            this.lastMessageId = data[data.length - 1].id;
+        }
+    },
 
-        // 2. 실시간 구독 설정
-        console.log("ChatService: Subscribing to real-time...");
-        
-        // 이전 채널이 있다면 확실히 제거
+    // Realtime WebSocket 구독 시도
+    subscribeRealtime(supabase, user) {
         if (this.channel) {
-            await supabase.removeChannel(this.channel);
+            supabase.removeChannel(this.channel);
             this.channel = null;
         }
-        
         UI.updateChatStatus('연결 중...', '#fbbf24');
 
-        // Supabase v2 postgres_changes 구독
         this.channel = supabase
-            .channel('realtime:public:messages')
-            .on(
-                'postgres_changes',
+            .channel('chat_room_v1')
+            .on('postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'messages' },
                 (payload) => {
-                    console.log("ChatService: 실시간 메시지 수신!", payload);
                     const newMsg = payload.new;
-                    // isMe 판별: user_email 기반으로 비교
-                    UI.renderChatMessage(newMsg, newMsg.user_email === user.email);
+                    // 폴링과 중복 방지: 아직 표시 안 된 메시지만 렌더링
+                    if (newMsg.id > this.lastMessageId) {
+                        this.lastMessageId = newMsg.id;
+                        UI.renderChatMessage(newMsg, newMsg.user_email === user.email);
+                    }
                 }
             )
             .subscribe((status, err) => {
-                console.log("ChatService: 구독 상태:", status, err || '');
+                console.log("Realtime 구독 상태:", status);
                 if (status === 'SUBSCRIBED') {
-                    UI.updateChatStatus('연결됨 ●', '#4ade80');
+                    // Realtime 성공 → 폴링 중단
+                    UI.updateChatStatus('실시간 연결됨 ●', '#4ade80');
+                    this.stopPolling();
                 } else if (status === 'CHANNEL_ERROR') {
-                    UI.updateChatStatus('연결 오류', '#f87171');
-                    console.error('CHANNEL_ERROR 원인:', err);
-                } else if (status === 'TIMED_OUT') {
-                    UI.updateChatStatus('연결 시간 초과', '#fbbf24');
-                } else if (status === 'CLOSED') {
-                    UI.updateChatStatus('연결 끊김', '#64748b');
+                    // Realtime 실패 → 폴링으로 대체
+                    UI.updateChatStatus('자동 업데이트 중 ●', '#a78bfa');
+                    console.warn('Realtime 연결 실패. 폴링 모드로 동작 중:', err);
                 }
             });
+    },
+
+    // 3초마다 새 메시지 폴링 (Realtime 백업)
+    startPolling(supabase, user) {
+        this.stopPolling();
+        this.pollingTimer = setInterval(async () => {
+            const { data } = await supabase
+                .from('messages')
+                .select('*')
+                .gt('id', this.lastMessageId)  // 마지막 ID 이후 것만 가져오기
+                .order('created_at', { ascending: true });
+
+            if (data && data.length > 0) {
+                data.forEach(msg => UI.renderChatMessage(msg, msg.user_email === user.email));
+                this.lastMessageId = data[data.length - 1].id;
+            }
+        }, 3000); // 3초마다 체크
+    },
+
+    stopPolling() {
+        if (this.pollingTimer) {
+            clearInterval(this.pollingTimer);
+            this.pollingTimer = null;
+        }
     },
 
     async sendMessage(content) {
         const { supabase, user } = AppState.get();
         if (!supabase || !user || !content.trim()) return;
 
-        // user_id도 함께 저장하여 isMe 판별 안정화
         const { error } = await supabase.from('messages').insert([{
             content: content.trim(),
             user_email: user.email,
@@ -359,7 +393,6 @@ const ChatService = {
             console.error("메시지 전송 실패:", error);
             alert("메시지 전송에 실패했습니다.");
         } else {
-            // 전송 성공 시 입력창 비우기
             UI.elements.chatInput.value = '';
         }
     },
