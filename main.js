@@ -301,44 +301,45 @@ const ChatService = {
         } else if (data) {
             console.log(`ChatService: Successfully fetched ${data.length} messages.`);
             this.clearChat();
-            data.forEach(msg => UI.renderChatMessage(msg, msg.user_id === user.id));
+            // isMe 판별을 user_email 기반으로 수정 (user_id가 null일 수 있기 때문)
+            data.forEach(msg => UI.renderChatMessage(msg, msg.user_email === user.email));
         }
 
-        // 2. 실시간 구독 설정 - 3단계 지시사항 ①
-        console.log("ChatService: Subscribing to real-time 'messages'...");
+        // 2. 실시간 구독 설정
+        console.log("ChatService: Subscribing to real-time...");
         
         // 이전 채널이 있다면 확실히 제거
         if (this.channel) {
-            console.log("ChatService: Removing existing channel...");
-            supabase.removeChannel(this.channel);
+            await supabase.removeChannel(this.channel);
+            this.channel = null;
         }
         
-        UI.updateChatStatus('연결 중...', '#fbbf24'); // 주황색
+        UI.updateChatStatus('연결 중...', '#fbbf24');
 
-        // 채널 생성 (v2 방식)
-        this.channel = supabase.channel('messages_room'); // 채널명을 조금 더 구체적으로 변경 시도
-
-        this.channel
-            .on('postgres_changes', { 
-                event: 'INSERT', 
-                schema: 'public', 
-                table: 'messages' 
-            }, payload => {
-                console.log("ChatService: Real-time message received!", payload);
-                const newMsg = payload.new;
-                UI.renderChatMessage(newMsg, newMsg.user_id === user.id);
-            })
+        // Supabase v2 postgres_changes 구독
+        this.channel = supabase
+            .channel('realtime:public:messages')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'messages' },
+                (payload) => {
+                    console.log("ChatService: 실시간 메시지 수신!", payload);
+                    const newMsg = payload.new;
+                    // isMe 판별: user_email 기반으로 비교
+                    UI.renderChatMessage(newMsg, newMsg.user_email === user.email);
+                }
+            )
             .subscribe((status, err) => {
-                console.log("ChatService: Subscription status:", status);
-                if (err) console.error("ChatService: Subscription error details:", err);
-
+                console.log("ChatService: 구독 상태:", status, err || '');
                 if (status === 'SUBSCRIBED') {
-                    UI.updateChatStatus('연결됨 (실시간)', '#4ade80'); // 초록색
+                    UI.updateChatStatus('연결됨 ●', '#4ade80');
                 } else if (status === 'CHANNEL_ERROR') {
-                    UI.updateChatStatus('DB 중계 대기 중 (새로고침 권장)', '#f87171'); // 빨간색
-                    console.error("ChatService: Channel error happened. Check if Replication is enabled for 'messages' table.");
+                    UI.updateChatStatus('연결 오류', '#f87171');
+                    console.error('CHANNEL_ERROR 원인:', err);
                 } else if (status === 'TIMED_OUT') {
-                    UI.updateChatStatus('연결 시간 초과', '#fbbf24'); // 주황색
+                    UI.updateChatStatus('연결 시간 초과', '#fbbf24');
+                } else if (status === 'CLOSED') {
+                    UI.updateChatStatus('연결 끊김', '#64748b');
                 }
             });
     },
@@ -347,17 +348,18 @@ const ChatService = {
         const { supabase, user } = AppState.get();
         if (!supabase || !user || !content.trim()) return;
 
-        // 지시하신 { content, user_email } 형식 적용
+        // user_id도 함께 저장하여 isMe 판별 안정화
         const { error } = await supabase.from('messages').insert([{
             content: content.trim(),
-            user_email: user.email
+            user_email: user.email,
+            user_id: user.id
         }]);
 
         if (error) {
             console.error("메시지 전송 실패:", error);
             alert("메시지 전송에 실패했습니다.");
         } else {
-            // 전송 성공 시 입력창 비우기 (지시 사항)
+            // 전송 성공 시 입력창 비우기
             UI.elements.chatInput.value = '';
         }
     },
