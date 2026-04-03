@@ -306,25 +306,39 @@ const ChatService = {
 
         // 2. 실시간 구독 설정 - 3단계 지시사항 ①
         console.log("ChatService: Subscribing to real-time 'messages'...");
-        if (this.channel) supabase.removeChannel(this.channel);
+        
+        // 이전 채널이 있다면 확실히 제거
+        if (this.channel) {
+            console.log("ChatService: Removing existing channel...");
+            supabase.removeChannel(this.channel);
+        }
         
         UI.updateChatStatus('연결 중...', '#fbbf24'); // 주황색
 
-        this.channel = supabase
-            .channel('messages') 
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        // 채널 생성 (v2 방식)
+        this.channel = supabase.channel('messages_room'); // 채널명을 조금 더 구체적으로 변경 시도
+
+        this.channel
+            .on('postgres_changes', { 
+                event: 'INSERT', 
+                schema: 'public', 
+                table: 'messages' 
+            }, payload => {
                 console.log("ChatService: Real-time message received!", payload);
                 const newMsg = payload.new;
                 UI.renderChatMessage(newMsg, newMsg.user_id === user.id);
             })
-            .subscribe((status) => {
+            .subscribe((status, err) => {
                 console.log("ChatService: Subscription status:", status);
+                if (err) console.error("ChatService: Subscription error details:", err);
+
                 if (status === 'SUBSCRIBED') {
                     UI.updateChatStatus('연결됨 (실시간)', '#4ade80'); // 초록색
-                } else if (status === 'CLOSED') {
-                    UI.updateChatStatus('연결 닫힘', '#64748b'); // 회색
                 } else if (status === 'CHANNEL_ERROR') {
-                    UI.updateChatStatus('연결 오류 (DB 설정 확인)', '#f87171'); // 빨간색
+                    UI.updateChatStatus('DB 중계 대기 중 (새로고침 권장)', '#f87171'); // 빨간색
+                    console.error("ChatService: Channel error happened. Check if Replication is enabled for 'messages' table.");
+                } else if (status === 'TIMED_OUT') {
+                    UI.updateChatStatus('연결 시간 초과', '#fbbf24'); // 주황색
                 }
             });
     },
