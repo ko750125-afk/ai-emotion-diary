@@ -51,9 +51,9 @@ const UI = {
     init() {
         const ids = [
             'login-section', 'app-content', 'email-input', 'password-input', 'auth-error',
-            'logged-in-user', 'voice-btn', 'voice-text', 'analyze-btn', 'diary-input',
+            'logged-in-user', 'user-avatar', 'avatar-input', 'avatar-change-btn', 'voice-btn', 'voice-text', 'analyze-btn', 'diary-input',
             'ai-response', 'history-container', 'signup-btn', 'login-btn', 'google-login-btn', 'logout-btn',
-            'chat-box', 'chat-input', 'send-chat-btn', 'status-dot', 'status-text'
+            'chat-box', 'chat-input', 'send-chat-btn', 'chat-image-input', 'chat-image-btn', 'status-dot', 'status-text'
         ];
         ids.forEach(id => this.elements[id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())] = document.getElementById(id));
     },
@@ -120,7 +120,11 @@ const UI = {
         
         msgEl.innerHTML = `
             <span class="chat-msg-user">${Utils.escapeHtml(user_email)}</span>
-            <div class="chat-msg-content">${Utils.escapeHtml(content)}</div>
+            <div class="chat-msg-content">
+                ${content.startsWith('http') && (content.includes('supabase') || content.match(/\.(jpeg|jpg|gif|png)$/)) 
+                    ? `<img src="${content}" alt="Shared Image" onclick="window.open('${content}', '_blank')">`
+                    : Utils.escapeHtml(content)}
+            </div>
             <span class="chat-msg-time">${time}</span>
         `;
         
@@ -161,6 +165,7 @@ const AuthService = {
         if (session) {
             DiaryService.restoreTemp();
             ApiService.fetchHistory();
+            ProfileService.loadAvatar(); // 아바타 불러오기
             ChatService.init(); // 채팅 초기화 및 구독 시작
         }
     },
@@ -281,6 +286,59 @@ const DiaryService = {
     }
 };
 
+const ProfileService = {
+    async loadAvatar() {
+        const { supabase, user } = AppState.get();
+        if (!supabase || !user) return;
+
+        // 1. 유저 메타데이터 확인
+        const avatarUrl = user.user_metadata?.avatar_url;
+        if (avatarUrl) {
+            UI.elements.userAvatar.src = avatarUrl;
+            return;
+        }
+
+        // 2. 스토리지에서 기본 파일 확인 (fallback)
+        const { data } = supabase.storage.from('avatars').getPublicUrl(`${user.id}/avatar.png`);
+        if (data?.publicUrl) {
+            // URL이 유효한지 가볍게 체크 (실제론 metadata 업데이트가 권장됨)
+            const res = await fetch(data.publicUrl, { method: 'HEAD' });
+            if (res.ok) UI.elements.userAvatar.src = data.publicUrl;
+        }
+    },
+
+    async uploadAvatar(file) {
+        const { supabase, user } = AppState.get();
+        if (!supabase || !user || !file) return;
+
+        UI.updateChatStatus('사진 업로드 중...', '#fbbf24');
+        const fileName = `avatar.png`; // 고정 이름으로 덮어쓰기
+        const filePath = `${user.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('avatars')
+            .upload(filePath, file, { upsert: true });
+
+        if (uploadError) {
+            alert("업로드 실패: " + uploadError.message);
+            return;
+        }
+
+        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+        
+        // 유저 메타데이터 업데이트 (나중에 로그인할 때 바로 불러오기 위함)
+        const { error: updateError } = await supabase.auth.updateUser({
+            data: { avatar_url: `${publicUrl}?t=${Date.now()}` } // 캐시 방지
+        });
+
+        if (updateError) console.error("메타데이터 업데이트 실패:", updateError);
+        
+        UI.elements.userAvatar.src = `${publicUrl}?t=${Date.now()}`;
+        UI.updateChatStatus('업로드 완료', '#4ade80');
+        setTimeout(() => ChatService.updateStatusByRealtime(), 2000);
+    }
+};
+
 const ChatService = {
     channel: null,
     pollingTimer: null,   // 폴링 타이머
@@ -355,6 +413,14 @@ const ChatService = {
             });
     },
 
+    updateStatusByRealtime() {
+        if (this.channel && this.channel.state === 'joined') {
+            UI.updateChatStatus('실시간 연결됨 ●', '#4ade80');
+        } else {
+            UI.updateChatStatus('자동 업데이트 중 ●', '#a78bfa');
+        }
+    },
+
     // 3초마다 새 메시지 폴링 (Realtime 백업)
     startPolling(supabase, user) {
         this.stopPolling();
@@ -397,6 +463,30 @@ const ChatService = {
         }
     },
 
+    async uploadAndSendImage(file) {
+        const { supabase, user } = AppState.get();
+        if (!supabase || !user || !file) return;
+
+        UI.updateChatStatus('이미지 전송 중...', '#fbbf24');
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+        const filePath = `${user.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('chat-images')
+            .upload(filePath, file);
+
+        if (uploadError) {
+            alert("이미지 업로드 실패: " + uploadError.message);
+            UI.updateChatStatus('전송 실패', '#ef4444');
+            return;
+        }
+
+        const { data: { publicUrl } } = supabase.storage.from('chat-images').getPublicUrl(filePath);
+        await this.sendMessage(publicUrl);
+        UI.updateChatStatus('전송 완료', '#4ade80');
+        setTimeout(() => this.updateStatusByRealtime(), 2000);
+    },
+
     clearChat() {
         UI.elements.chatBox.innerHTML = '';
     }
@@ -429,6 +519,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'Enter') {
                 UI.elements.sendChatBtn.click();
             }
+        }},
+        { id: 'avatarChangeBtn', event: 'click', fn: () => UI.elements.avatarInput.click() },
+        { id: 'avatarInput', event: 'change', fn: (e) => {
+            const file = e.target.files[0];
+            if (file) ProfileService.uploadAvatar(file);
+        }},
+        { id: 'chatImageBtn', event: 'click', fn: () => UI.elements.chatImageInput.click() },
+        { id: 'chatImageInput', event: 'change', fn: (e) => {
+            const file = e.target.files[0];
+            if (file) ChatService.uploadAndSendImage(file);
         }}
     ];
 

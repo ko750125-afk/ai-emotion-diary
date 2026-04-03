@@ -51,7 +51,16 @@
             <!-- 기존 애플리케이션 화면 (초기엔 숨김 처리) -->
             <div id="app-content" style="display: none;">
                 <div class="user-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <p style="margin: 0;">로그인 됨: <strong id="logged-in-user"></strong></p>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div class="avatar-container">
+                            <img id="user-avatar" src="https://ui-avatars.com/api/?name=User&background=random" alt="Avatar" class="avatar-img">
+                            <input type="file" id="avatar-input" accept="image/*" style="display: none;">
+                            <button id="avatar-change-btn" class="avatar-edit-badge">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            </button>
+                        </div>
+                        <p style="margin: 0;">반갑습니다, <strong id="logged-in-user"></strong>님!</p>
+                    </div>
                     <button id="logout-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.9rem;">로그아웃</button>
                 </div>
                 
@@ -98,6 +107,10 @@
                     <div class="chat-empty-msg">실시간으로 다른 사용자들과 대화해보세요.</div>
                 </div>
                 <div class="chat-input-group">
+                    <input type="file" id="chat-image-input" accept="image/*" style="display: none;">
+                    <button id="chat-image-btn" class="btn btn-outline" style="padding: 8px; flex: 0 0 40px;" title="이미지 전송">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    </button>
                     <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="200">
                     <button id="send-chat-btn" class="btn btn-primary" style="flex: 0 0 80px; padding: 12px;">전송</button>
                 </div>
