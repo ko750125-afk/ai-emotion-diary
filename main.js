@@ -283,7 +283,7 @@ const ChatService = {
         const { supabase, user } = AppState.get();
         if (!supabase || !user) return;
 
-        // 1. 기존 메시지 가져오기 (최근 20개)
+        // 1. 기존 메시지 가져오기 (최근 20개) - 3단계 지시사항 ③
         const { data, error } = await supabase
             .from('messages')
             .select('*')
@@ -295,13 +295,14 @@ const ChatService = {
             data.forEach(msg => UI.renderChatMessage(msg, msg.user_id === user.id));
         }
 
-        // 2. 실시간 구독 설정 (3단계 지시 전이므로 기본 틀만 유지)
+        // 2. 실시간 구독 설정 - 3단계 지시사항 ①
         if (this.channel) supabase.removeChannel(this.channel);
         
         this.channel = supabase
-            .channel('public:messages')
+            .channel('messages') // 지시사항대로 'messages' 채널 사용
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
                 const newMsg = payload.new;
+                // 새로운 메시지 추가 - 3단계 지시사항 ②
                 UI.renderChatMessage(newMsg, newMsg.user_id === user.id);
             })
             .subscribe();
