@@ -53,7 +53,7 @@ const UI = {
             'login-section', 'app-content', 'email-input', 'password-input', 'auth-error',
             'logged-in-user', 'voice-btn', 'voice-text', 'analyze-btn', 'diary-input',
             'ai-response', 'history-container', 'signup-btn', 'login-btn', 'google-login-btn', 'logout-btn',
-            'chat-box', 'chat-input', 'send-chat-btn'
+            'chat-box', 'chat-input', 'send-chat-btn', 'status-dot', 'status-text'
         ];
         ids.forEach(id => this.elements[id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())] = document.getElementById(id));
     },
@@ -130,6 +130,11 @@ const UI = {
         // 빈 메시지 안내 가리기
         const emptyMsg = this.elements.chatBox.querySelector('.chat-empty-msg');
         if (emptyMsg) emptyMsg.style.display = 'none';
+    },
+
+    updateChatStatus(status, color) {
+        if (this.elements.statusDot) this.elements.statusDot.style.background = color;
+        if (this.elements.statusText) this.elements.statusText.innerText = status;
     }
 };
 
@@ -303,6 +308,8 @@ const ChatService = {
         console.log("ChatService: Subscribing to real-time 'messages'...");
         if (this.channel) supabase.removeChannel(this.channel);
         
+        UI.updateChatStatus('연결 중...', '#fbbf24'); // 주황색
+
         this.channel = supabase
             .channel('messages') 
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
@@ -312,6 +319,13 @@ const ChatService = {
             })
             .subscribe((status) => {
                 console.log("ChatService: Subscription status:", status);
+                if (status === 'SUBSCRIBED') {
+                    UI.updateChatStatus('연결됨 (실시간)', '#4ade80'); // 초록색
+                } else if (status === 'CLOSED') {
+                    UI.updateChatStatus('연결 닫힘', '#64748b'); // 회색
+                } else if (status === 'CHANNEL_ERROR') {
+                    UI.updateChatStatus('연결 오류 (DB 설정 확인)', '#f87171'); // 빨간색
+                }
             });
     },
 

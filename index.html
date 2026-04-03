@@ -87,7 +87,13 @@
 
             <!-- 💬 실시간 채팅 섹션 (이미지 기획안 반영) -->
             <div class="chat-section">
-                <h2>실시간 채팅</h2>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <h2 style="margin: 0;">실시간 채팅</h2>
+                    <div id="chat-status" style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                        <span id="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #64748b;"></span>
+                        <span id="status-text">연결 대기 중...</span>
+                    </div>
+                </div>
                 <div id="chat-box" class="chat-box">
                     <div class="chat-empty-msg">실시간으로 다른 사용자들과 대화해보세요.</div>
                 </div>
