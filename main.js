@@ -284,28 +284,35 @@ const ChatService = {
         if (!supabase || !user) return;
 
         // 1. 기존 메시지 가져오기 (최근 20개) - 3단계 지시사항 ③
+        console.log("ChatService: Fetching history...");
         const { data, error } = await supabase
             .from('messages')
             .select('*')
             .order('created_at', { ascending: true })
             .limit(20);
 
-        if (data) {
+        if (error) {
+            console.error("ChatService: Fetch error:", error);
+        } else if (data) {
+            console.log(`ChatService: Successfully fetched ${data.length} messages.`);
             this.clearChat();
             data.forEach(msg => UI.renderChatMessage(msg, msg.user_id === user.id));
         }
 
         // 2. 실시간 구독 설정 - 3단계 지시사항 ①
+        console.log("ChatService: Subscribing to real-time 'messages'...");
         if (this.channel) supabase.removeChannel(this.channel);
         
         this.channel = supabase
-            .channel('messages') // 지시사항대로 'messages' 채널 사용
+            .channel('messages') 
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                console.log("ChatService: Real-time message received!", payload);
                 const newMsg = payload.new;
-                // 새로운 메시지 추가 - 3단계 지시사항 ②
                 UI.renderChatMessage(newMsg, newMsg.user_id === user.id);
             })
-            .subscribe();
+            .subscribe((status) => {
+                console.log("ChatService: Subscription status:", status);
+            });
     },
 
     async sendMessage(content) {
