@@ -521,6 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }},
         { id: 'avatarChangeBtn', event: 'click', fn: () => UI.elements.avatarInput.click() },
+        { id: 'userAvatar', event: 'click', fn: () => UI.elements.avatarInput.click() }, // 이미지 클릭 시에도 동작
         { id: 'avatarInput', event: 'change', fn: (e) => {
             const file = e.target.files[0];
             if (file) ProfileService.uploadAvatar(file);
