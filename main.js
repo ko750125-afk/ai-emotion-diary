@@ -55,7 +55,7 @@ const UI = {
             'logged-in-user', 'user-avatar', 'avatar-input', 'avatar-change-btn',
             'chat-box', 'chat-input', 'send-chat-btn', 'chat-image-input', 'chat-image-btn', 
             'status-dot', 'status-text', 'voice-btn', 'presence-list', 'nickname-input', 'nickname-change-btn',
-            'emoji-btn', 'emoji-picker', 'emoji-list'
+            'emoji-btn', 'emoji-picker', 'emoji-list', 'guest-login-btn'
         ];
         ids.forEach(id => {
             const el = document.getElementById(id);
@@ -346,8 +346,26 @@ const AuthService = {
         AppState.update({ user: session?.user || null, token: session?.access_token || null });
         UI.updateAuthView(session);
         if (session) {
+            // 익명 유저인 경우 기본 닉네임 설정 여부 확인
+            if (session.user.is_anonymous || !session.user.email) {
+                const currentNick = localStorage.getItem('chat_nickname');
+                if (!currentNick) {
+                    const randomId = Math.floor(Math.random() * 9000) + 1000;
+                    localStorage.setItem('chat_nickname', `손님_${randomId}`);
+                }
+            }
             ProfileService.init(); // 닉네임 및 아바타 초기화
             ChatService.init();
+        }
+    },
+
+    async loginAnonymously() {
+        try {
+            const supabase = AppState.get().supabase;
+            const { data, error } = await supabase.auth.signInAnonymously();
+            if (error) throw error;
+        } catch (e) {
+            UI.showError("익명 로그인에 실패했습니다: " + e.message);
         }
     },
 
@@ -650,6 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'signupBtn', event: 'click', fn: () => AuthService.signup(UI.elements.emailInput.value.trim(), UI.elements.passwordInput.value) },
         { id: 'loginBtn', event: 'click', fn: () => AuthService.login(UI.elements.emailInput.value.trim(), UI.elements.passwordInput.value) },
         { id: 'googleLoginBtn', event: 'click', fn: () => AuthService.googleLogin() },
+        { id: 'guestLoginBtn', event: 'click', fn: () => AuthService.loginAnonymously() },
         { id: 'logoutBtn', event: 'click', fn: () => AuthService.logout() },
         { id: 'sendChatBtn', event: 'click', fn: () => {
             const content = UI.elements.chatInput.value.trim();

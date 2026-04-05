@@ -637,6 +637,26 @@ h1 {
 
 .google-btn:hover { background: #f0f0f0; transform: translateY(-2px); }
 
+.guest-btn {
+    width: 100%;
+    margin-top: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 14px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.3s;
+}
+
+.guest-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
 /* 🚨 Utility States */
 .error-message {
     background: rgba(246, 79, 89, 0.1);
