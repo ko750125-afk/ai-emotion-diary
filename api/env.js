@@ -8,7 +8,7 @@ export default function handler(req, res) {
     }
 
     res.status(200).json({
-        supabaseUrl,
-        supabaseAnonKey
+        supabaseUrl: supabaseUrl.replace(/\s/g, ''),
+        supabaseAnonKey: supabaseAnonKey.replace(/\s/g, '')
     });
 }

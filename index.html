@@ -68,12 +68,21 @@
                         <div class="profile-card">
                             <div class="chat-profile-area">
                                 <input type="file" id="avatar-input" accept="image/*" style="display: none;">
-                                <div class="profile-avatar-wrapper">
+                                <div class="profile-avatar-wrapper" title="아바타 변경">
                                     <img id="user-avatar" src="https://ui-avatars.com/api/?name=User&background=random" alt="Avatar" class="profile-avatar-img">
                                 </div>
-                                <button id="avatar-change-btn" class="text-btn">사진 변경</button>
+                                <div class="nickname-edit-group">
+                                    <input type="text" id="nickname-input" placeholder="닉네임 입력" maxlength="10">
+                                    <button id="nickname-change-btn" class="text-btn">변경</button>
+                                </div>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- 채팅방 손님 목록 -->
+                    <div id="presence-bar" class="presence-bar">
+                        <div class="presence-label">채팅방 손님</div>
+                        <div id="presence-list" class="presence-list"></div>
                     </div>
 
                     <div id="chat-box" class="chat-box">
@@ -89,6 +98,14 @@
                             <button id="voice-btn" class="btn-icon" title="음성 인식">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                             </button>
+                            <button id="emoji-btn" class="btn-icon" title="이모티콘">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                            </button>
+                            <!-- 이모티콘 피커 팝업 -->
+                            <div id="emoji-picker" class="emoji-picker glass-card" style="display: none;">
+                                <div class="emoji-picker-header">코글냥 이모티콘</div>
+                                <div id="emoji-list" class="emoji-list"></div>
+                            </div>
                             <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." maxlength="200">
                             <button id="send-chat-btn" class="btn-send">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>

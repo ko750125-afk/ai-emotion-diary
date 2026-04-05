@@ -1,0 +1,12 @@
+[
+  {"id": 1, "path": "/emojis/emoji1.png", "name": "cogle1"},
+  {"id": 2, "path": "/emojis/emoji2.png", "name": "cogle2"},
+  {"id": 3, "path": "/emojis/emoji3.png", "name": "cogle3"},
+  {"id": 4, "path": "/emojis/emoji4.png", "name": "cogle4"},
+  {"id": 5, "path": "/emojis/emoji5.png", "name": "cogle5"},
+  {"id": 6, "path": "/emojis/emoji6.png", "name": "cogle6"},
+  {"id": 7, "path": "/emojis/emoji7.png", "name": "cogle7"},
+  {"id": 8, "path": "/emojis/emoji8.png", "name": "cogle8"},
+  {"id": 9, "path": "/emojis/emoji9.png", "name": "cogle9"},
+  {"id": 10, "path": "/emojis/emoji10.png", "name": "cogle10"}
+]

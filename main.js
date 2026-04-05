@@ -15,7 +15,8 @@ const AppState = {
         supabase: null,
         user: null,
         token: null,
-        isRecording: false
+        isRecording: false,
+        micStartValue: ''
     },
     update(newState) {
         this._state = { ...this._state, ...newState };
@@ -53,7 +54,8 @@ const UI = {
             'login-section', 'app-content', 'email-input', 'password-input', 'auth-error',
             'logged-in-user', 'user-avatar', 'avatar-input', 'avatar-change-btn',
             'chat-box', 'chat-input', 'send-chat-btn', 'chat-image-input', 'chat-image-btn', 
-            'status-dot', 'status-text', 'voice-btn'
+            'status-dot', 'status-text', 'voice-btn', 'presence-list', 'nickname-input', 'nickname-change-btn',
+            'emoji-btn', 'emoji-picker', 'emoji-list'
         ];
         ids.forEach(id => {
             const el = document.getElementById(id);
@@ -66,7 +68,8 @@ const UI = {
         this.elements.loginSection.style.display = isLoggedIn ? 'none' : 'flex';
         this.elements.appContent.style.display = isLoggedIn ? 'block' : 'none';
         if (isLoggedIn) {
-            this.elements.loggedInUser.textContent = session.user.email;
+            const nickname = session.user.user_metadata?.display_name || session.user.email.split('@')[0];
+            this.elements.loggedInUser.textContent = `${nickname} (${session.user.email})`;
             this.elements.authError.style.display = 'none';
         }
     },
@@ -80,13 +83,20 @@ const UI = {
     },
 
     renderChatMessage(data, isMe) {
-        const { user_email, content, created_at, avatar_url } = data;
+        const { user_email, content, created_at, avatar_url, nickname } = data;
+        const currentUser = AppState.get().user;
+        
+        // 🔹 실시간 본인 판정 보완: 닉네임이 로컬 상태와 다를 경우 최신 상태 우선
+        const myNickname = currentUser?.user_metadata?.display_name || currentUser?.email?.split('@')[0];
+        let displayName = isMe ? myNickname : (nickname || user_email.split('@')[0]);
+        if (isMe) displayName += ' (나)';
+
         const msgEl = document.createElement('div');
         msgEl.className = `chat-msg ${isMe ? 'me' : 'others'}`;
         
         const time = new Date(created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-        const displayAvatar = avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user_email)}&background=random`;
-
+        const displayAvatar = isMe ? (currentUser?.user_metadata?.avatar_url || avatar_url) : (avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user_email)}&background=random`);
+        
         const imageRegex = /!\[image\]\((.*?)\)/;
         const imageMatch = content.match(imageRegex);
         
@@ -98,6 +108,11 @@ const UI = {
                 onerror="this.parentElement.innerHTML='<div style=\'font-size: 12px; color: #ef4444; padding: 10px; border: 1px dashed #ef4444; border-radius: 8px;\'>⚠️ 이미지를 불러올 수 없습니다.</div>';">`;
         } else if (content.startsWith('http') && (content.includes('supabase') || content.match(/\.(jpeg|jpg|gif|png)$/))) {
             displayContent = `<img src="${content}" alt="Shared Image" onclick="window.open('${content}', '_blank')">`;
+        } else {
+            // 이모티콘 코드 변환 [EMO:n]
+            displayContent = displayContent.replace(/\[EMO:(\d+)\]/g, (match, id) => {
+                return `<img src="/emojis/emoji${id}.png" class="chat-emoji" alt="emoji">`;
+            });
         }
 
         msgEl.innerHTML = `
@@ -105,7 +120,7 @@ const UI = {
                 <img src="${displayAvatar}" alt="Profile">
             </div>
             <div class="chat-msg-body">
-                <span class="chat-msg-user">${Utils.escapeHtml(user_email)}</span>
+                <span class="chat-msg-user">${Utils.escapeHtml(displayName)}</span>
                 <div class="chat-msg-content">
                     ${displayContent}
                 </div>
@@ -139,6 +154,34 @@ const UI = {
                 this.elements.voiceBtn.style.filter = '';
             }
         }
+    },
+
+    renderPresence(users) {
+        if (!this.elements.presenceList) return;
+        this.elements.presenceList.innerHTML = '';
+        
+        const currentUser = AppState.get().user;
+        
+        // 중복 제거 (Supabase presence는 동일 사용자가 세션 여러 개일 수 있음)
+        const uniqueUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
+
+        uniqueUsers.forEach(user => {
+            const isMe = currentUser && user.user_id === currentUser.id;
+            const userEl = document.createElement('div');
+            userEl.className = `presence-user-chip ${isMe ? 'me' : ''}`;
+            
+            // 닉네임 표시: (나) 추가 보정
+            let displayName = user.nickname || user.email.split('@')[0];
+            if (isMe) displayName += ' (나)';
+            
+            const avatarUrl = user.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`;
+            
+            userEl.innerHTML = `
+                <img src="${avatarUrl}" alt="Avatar" class="presence-chip-avatar">
+                <span class="presence-chip-name">${Utils.escapeHtml(displayName)}</span>
+            `;
+            this.elements.presenceList.appendChild(userEl);
+        });
     }
 };
 
@@ -147,9 +190,24 @@ const NotificationService = {
     // 맑은 신호음 URL
     soundUrl: 'https://assets.mixkit.co/active_storage/sfx/2859/2859-preview.mp3',
     audio: null,
+    isInitialized: false,
 
     init() {
         this.audio = new Audio(this.soundUrl);
+        this.audio.load();
+        
+        // 브라우저 정책 해결을 위해 첫 클릭 시 오디오 초기화
+        const initAudio = () => {
+            if (this.isInitialized) return;
+            this.audio.play().then(() => {
+                this.audio.pause();
+                this.audio.currentTime = 0;
+                this.isInitialized = true;
+                console.log("🔊 알림 오디오 초기화 완료");
+                window.removeEventListener('click', initAudio);
+            }).catch(e => console.log("오디오 대기 중..."));
+        };
+        window.addEventListener('click', initAudio);
     },
 
     playSound() {
@@ -179,11 +237,14 @@ const SpeechService = {
         this.recognition.onresult = (e) => {
             let interim = '', final = '';
             for (let i = e.resultIndex; i < e.results.length; i++) {
-                if (e.results[i].isFinal) final += e.results[i][0].transcript + ' ';
+                if (e.results[i].isFinal) final += e.results[i][0].transcript;
                 else interim += e.results[i][0].transcript;
             }
-            const current = UI.elements.chatInput.value;
-            UI.elements.chatInput.value = current.trim() + ' ' + (final + interim).trim();
+            const { micStartValue } = AppState.get();
+            const result = (final + interim).trim();
+            if (result) {
+                UI.elements.chatInput.value = micStartValue + (micStartValue ? ' ' : '') + result;
+            }
         };
 
         this.recognition.onend = () => {
@@ -203,6 +264,8 @@ const SpeechService = {
             this.recognition.stop();
         } else {
             try {
+                // 시작 시 현재 입력창 값을 저장하여 중복 Appending 방지
+                AppState.update({ micStartValue: UI.elements.chatInput.value.trim() });
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 stream.getTracks().forEach(t => t.stop());
                 this.recognition.start();
@@ -213,11 +276,61 @@ const SpeechService = {
     }
 };
 
+const EmojiService = {
+    emojis: [],
+    isOpen: false,
+
+    async init() {
+        try {
+            const response = await fetch('/emojis/emojis.json');
+            this.emojis = await response.json();
+            this.renderPicker();
+        } catch (e) {
+            console.error("이모티콘 로드 실패:", e);
+        }
+    },
+
+    renderPicker() {
+        if (!UI.elements.emojiList) return;
+        UI.elements.emojiList.innerHTML = '';
+        this.emojis.forEach(emoji => {
+            const item = document.createElement('div');
+            item.className = 'emoji-item';
+            item.innerHTML = `<img src="${emoji.path}" alt="${emoji.name}" title="${emoji.name}">`;
+            item.onclick = () => {
+                ChatService.sendMessage(`[EMO:${emoji.id}]`);
+                this.toggle();
+            };
+            UI.elements.emojiList.appendChild(item);
+        });
+    },
+
+    toggle() {
+        this.isOpen = !this.isOpen;
+        UI.elements.emojiPicker.style.display = this.isOpen ? 'block' : 'none';
+        
+        if (this.isOpen) {
+            const closeHandler = (e) => {
+                if (!UI.elements.emojiPicker.contains(e.target) && e.target !== UI.elements.emojiBtn) {
+                    this.isOpen = false;
+                    UI.elements.emojiPicker.style.display = 'none';
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', closeHandler), 10);
+        }
+    }
+};
+
 const AuthService = {
     async init() {
         try {
             const { supabaseUrl, supabaseAnonKey } = await HttpClient.request('/api/env');
-            AppState.update({ supabase: createClient(supabaseUrl, supabaseAnonKey) });
+            // ✅ API 키 공백 제거 (Trim) - 실시간 연결 문제 방어
+            const url = supabaseUrl.trim().replace(/['"]/g, '');
+            const key = supabaseAnonKey.trim().replace(/['"]/g, '');
+            
+            AppState.update({ supabase: createClient(url, key) });
             
             const supabase = AppState.get().supabase;
             supabase.auth.onAuthStateChange((_, session) => this.handleSession(session));
@@ -233,7 +346,7 @@ const AuthService = {
         AppState.update({ user: session?.user || null, token: session?.access_token || null });
         UI.updateAuthView(session);
         if (session) {
-            ProfileService.loadAvatar();
+            ProfileService.init(); // 닉네임 및 아바타 초기화
             ChatService.init();
         }
     },
@@ -261,6 +374,42 @@ const AuthService = {
 };
 
 const ProfileService = {
+    init() {
+        this.loadAvatar();
+        this.loadNickname();
+    },
+
+    loadNickname() {
+        const { user } = AppState.get();
+        if (!user) return;
+        const nickname = user.user_metadata?.display_name || user.email.split('@')[0];
+        if (UI.elements.nicknameInput) UI.elements.nicknameInput.value = nickname;
+    },
+
+    async updateNickname() {
+        const { supabase, user } = AppState.get();
+        if (!supabase || !user) return;
+
+        const nickname = UI.elements.nicknameInput.value.trim();
+        if (!nickname) return alert('닉네임을 입력해주세요.');
+
+        const { error } = await supabase.auth.updateUser({
+            data: { display_name: nickname }
+        });
+
+        if (error) {
+            alert('닉네임 변경에 실패했습니다: ' + error.message);
+        } else {
+            alert('닉네임이 변경되었습니다! 이제 채팅방에도 반영됩니다.');
+            // ✅ 실시간 접속 정보(Presence) 즉시 동기화
+            ChatService.syncPresence();
+            // 로컬 헤더 표시 업데이트
+            if (UI.elements.loggedInUser) {
+                UI.elements.loggedInUser.textContent = `${nickname} (${user.email})`;
+            }
+        }
+    },
+
     async loadAvatar() {
         const { supabase, user } = AppState.get();
         if (!supabase || !user) return;
@@ -363,14 +512,35 @@ const ChatService = {
                     }
                 }
             )
-            .subscribe((status, err) => {
+            .on('presence', { event: 'sync' }, () => {
+                const state = this.channel.presenceState();
+                const presenceUsers = Object.values(state).flat();
+                UI.renderPresence(presenceUsers);
+            })
+            .subscribe(async (status, err) => {
                 if (status === 'SUBSCRIBED') {
                     UI.updateChatStatus('실시간 연결됨 ●', '#4ade80');
                     this.stopPolling();
+                    this.syncPresence(); // Presence 트래킹 시작
                 } else if (status === 'CHANNEL_ERROR') {
                     UI.updateChatStatus('자동 업데이트 중 ●', '#a78bfa');
                 }
             });
+    },
+
+    // ✅ 닉네임/아바타 변경 시 실시간 시스템에 즉시 알림
+    async syncPresence() {
+        if (!this.channel) return;
+        const { user } = AppState.get();
+        if (!user) return;
+
+        await this.channel.track({
+            user_id: user.id,
+            email: user.email,
+            nickname: user.user_metadata?.display_name || user.email.split('@')[0],
+            avatar_url: user.user_metadata?.avatar_url || null,
+            online_at: new Date().toISOString(),
+        });
     },
 
     updateStatusByRealtime() {
@@ -408,19 +578,35 @@ const ChatService = {
         const { supabase, user } = AppState.get();
         if (!supabase || !user || !content.trim()) return;
 
+        const nickname = user.user_metadata?.display_name || user.email.split('@')[0];
+        
+        // 1차 시도: 닉네임 컬럼 포함 (컬럼이 없을 수도 있음)
         const { error } = await supabase.from('messages').insert([{
             content: content.trim(),
             user_email: user.email,
             user_id: user.id,
+            nickname: nickname,
             avatar_url: user.user_metadata?.avatar_url || null
         }]);
 
         if (error) {
-            console.error("메시지 전송 실패:", error);
-            alert("메시지 전송에 실패했습니다.");
-        } else {
-            UI.elements.chatInput.value = '';
+            console.warn("닉네임 전송 실패(컬럼 부재 가능성), 재시도 중...", error);
+            // 2차 시도: 닉네임 없이 전송 (호환성 유지)
+            const { error: secondError } = await supabase.from('messages').insert([{
+                content: content.trim(),
+                user_email: user.email,
+                user_id: user.id,
+                avatar_url: user.user_metadata?.avatar_url || null
+            }]);
+            
+            if (secondError) {
+                console.error("메시지 전송 최종 실패:", secondError);
+                alert("메시지 전송에 실패했습니다.");
+                return;
+            }
         }
+        
+        UI.elements.chatInput.value = '';
     },
 
     async uploadAndSendImage(file) {
@@ -458,6 +644,7 @@ document.addEventListener('DOMContentLoaded', () => {
     AuthService.init();
     SpeechService.init();
     NotificationService.init();
+    EmojiService.init();
 
     const listeners = [
         { id: 'signupBtn', event: 'click', fn: () => AuthService.signup(UI.elements.emailInput.value.trim(), UI.elements.passwordInput.value) },
@@ -485,7 +672,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const file = e.target.files[0];
             if (file) ChatService.uploadAndSendImage(file);
         }},
-        { id: 'voiceBtn', event: 'click', fn: () => SpeechService.toggle() }
+        { id: 'voiceBtn', event: 'click', fn: () => SpeechService.toggle() },
+        { id: 'nicknameChangeBtn', event: 'click', fn: () => {
+            const nick = UI.elements.nicknameInput.value.trim();
+            if (nick) ProfileService.updateNickname(nick);
+        }},
+        { id: 'emojiBtn', event: 'click', fn: () => EmojiService.toggle() }
     ];
 
     listeners.forEach(({ id, event, fn }) => {
